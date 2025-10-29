@@ -1,13 +1,17 @@
-# ParagonSR: A High-Performance Super-Resolution Architecture
+# ParagonSR
 
-**Author:** Philip Hofmann
-**Primary Development:** This architecture was developed in a collaborative process with advanced large language models, synthesizing and refining ideas from state-of-the-art research.
+**A High-Performance, Reparameterizable CNN-Hybrid for Super-Resolution and Restoration**  
+*An Architecture by Philip Hofmann*
+
+---
 
 ## 1. Introduction & Philosophy
 
-ParagonSR is a state-of-the-art, general-purpose super-resolution architecture designed for a superior balance of **peak quality, training efficiency, and inference speed**. It represents a synergistic blend of the most effective and efficient ideas from a multitude of modern SISR models.
+ParagonSR is a state-of-the-art, general-purpose super-resolution architecture designed for a superior balance of **peak quality, training efficiency, and inference speed**. It is the result of a rigorous design and debugging process, representing a synergistic blend of the most effective and efficient ideas from a multitude of modern SISR models.
 
 The core philosophy behind ParagonSR is that of an **"Optimized Hybrid CNN,"** engineered to achieve the perceptual power and deep feature understanding of a Transformer, but with the efficiency, stability, and deployment speed of a highly optimized Convolutional Neural Network.
+
+Its design is a direct evolution of ideas first explored in a previous, unreleased prototype architecture, **HyperionSR**.
 
 ### Strengths & Design Goals
 
@@ -31,11 +35,11 @@ The heart of the network is the `ParagonBlock`, a novel block designed to maximi
 
 2.  **Powerful Gated Transformation (The "Brain"):** The features are then processed by a **Gated Feed-Forward Network** (`GatedFFN`). This is a powerful, non-linear feature transformer inspired by modern language models. Its gating mechanism allows the network to dynamically route and modulate information, a key technique for learning the complex, non-linear mappings required for high-fidelity restoration.
 
-3.  **Advanced Reparameterization (The "Afterburner"):** The core convolutional unit within the Gated-FFN, `ReparamConvV3`, is inspired by the powerful design of SpanPP. It fuses three distinct and powerful convolutional branches with learnable weights, dramatically increasing the model's expressive power during training with a negligible impact on the final, fused inference speed.
+3.  **Advanced Reparameterization (The "Afterburner"):** The core convolutional unit, `ReparamConvV3`, is inspired by the powerful design of SpanPP. It fuses three distinct and powerful convolutional branches with learnable weights, dramatically increasing the model's expressive power during training with a negligible impact on the final, fused inference speed.
 
 ### A Battle-Hardened Design: Engineered for Stability
 
-Deep, reparameterizable architectures can be prone to instability during long training runs, especially when using advanced techniques like EMA. ParagonSR was specifically engineered to solve these challenges:
+Deep, reparameterizable architectures can be prone to instability during long training runs. ParagonSR was specifically engineered to solve these challenges through a process of real-world testing and refinement:
 
 -   **`LayerScale` Integration:** Each ParagonBlock includes a `LayerScale` module, a powerful stabilization technique from modern Transformer designs. It forces the model to learn in a more controlled manner, preventing the "exploding gradient" (`NaN` loss) issues that can plague deep networks.
 -   **Stateless Fusion for EMA:** The architecture uses a stateless, "on-the-fly" fusion method during training-time validations. This design is the result of rigorous testing and is **guaranteed to be compatible with EMA**, permanently fixing the state-synchronization bugs that can corrupt a model's weights over time.
@@ -58,7 +62,7 @@ ParagonSR comes in a variety of sizes, allowing users to choose the perfect bala
 This project is designed for the **[traiNNer-redux](https://github.com/the-database/traiNNer-redux)** framework.
 
 ### Step 1: Place Project Files
-Download the release files and place them in the following locations within your `traiNNer-redux` project folder:
+Place the release files in the following locations within your `traiNNer-redux` project:
 
 ```
 traiNNer-redux/
@@ -72,69 +76,30 @@ traiNNer-redux/
 │   └── archs/
 │       └── ParagonSR_arch.py
 │
-├── options/
-│   └── templates/
-│       └── ParagonSR/    <-- CREATE THIS FOLDER
-│           └── ParagonSR_fidelity.yml
-│
-└── train.py
+└── ...
 ```
 
 ### Step 2: Install Dependencies
 It is highly recommended to use a Python virtual environment.
 ```sh
-# Create and activate the virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
 # Install all required packages for training and export
 pip install torch torchvision safetensors onnx onnxconverter-common onnxscript
 
 # NOTE: For GPU support, ensure you install the correct PyTorch version for your CUDA toolkit.
-# Visit https://pytorch.org/get-started/locally/ to get the specific command.
 ```
 
-## 5. Training
+## 5. Training & Deployment
 
-To train a `ParagonSR` model, use the provided template.
+Please see the [release page for the pre-trained model](link-to-your-pretrain-release) for a detailed training template (`.yml`) and a guide to using the deployment scripts.
 
-1.  **Create a new config file** by copying the template:
-    `cp options/templates/ParagonSR/ParagonSR_fidelity.yml options/train/My_ParagonSR_Training.yml`
-2.  **Edit the new config file** (`My_ParagonSR_Training.yml`) to point to your datasets.
-3.  **Start the training run:**
-    ```sh
-    python train.py -opt options/train/My_ParagonSR_Training.yml
-    ```
+A key feature of ParagonSR is its ability to be permanently fused for deployment. After training, run `fuse_model.py` and then `export_onnx.py` to create a final, high-speed, portable model for real-world applications.
 
-## 6. Deployment: Fusing & ONNX Export
-
-A key feature of ParagonSR is its ability to be permanently fused for a significant inference speed-up. This is a **required step** for creating a release model.
-
-### Step 1: Fuse the Trained Model
-This script loads a training checkpoint and saves a new, permanently fused model.
-
-1.  **Edit `scripts/paragonsr/fuse_model.py`** to point `TRAINING_CHECKPOINT_PATH` to your desired `.safetensors` file (e.g., `net_g_ema_latest.safetensors`).
-2.  Run the script from the **root** of your project:
-    ```sh
-    python -m scripts.paragonsr.fuse_model
-    ```
-This will create a new, fast model (e.g., `release_models/4x_ParagonSR_S_fused.safetensors`).
-
-### Step 2: Export the Fused Model to ONNX
-This script takes the fused model and converts it to FP32 and FP16 ONNX formats.
-
-1.  **Edit `scripts/paragonsr/export_onnx.py`** to ensure `FUSED_MODEL_PATH` matches the output from the previous step.
-2.  Run the script from the **root** of your project:
-    ```sh
-    python -m scripts.paragonsr.export_onnx
-    ```
-The resulting `.onnx` files are dynamic, portable, and ready for high-speed inference in applications like ChaiNNer.
-
-## 7. Acknowledgements & Inspirations
+## 6. Acknowledgements & Inspirations
 
 This architecture stands on the shoulders of giants and would not be possible without the incredible research and open-source contributions of the community.
 
--   **Architectural Inspirations:** `SpanPP`, `HyperionSR`, `MoSRv2`, `RTMoSR`, `GaterV3`, `FDAT`, `HAT`.
+-   **Architectural Ancestor:** `HyperionSR` (unreleased predecessor)
+-   **Primary Inspirations:** `SpanPP`, `MoSRv2`, `RTMoSR`, `GaterV3`, `FDAT`, `HAT`.
 -   **Core Techniques:**
     -   **Structural Reparameterization:** "RepVGG: Making VGG-style ConvNets Great Again" (Ding et al., 2021).
     -   **Gated Linear Units:** "GLU Variants Improve Transformer" (Shazeer, 2020).
