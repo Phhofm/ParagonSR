@@ -108,7 +108,7 @@ pip install torch torchvision safetensors onnx onnxconverter-common onnxscript
 
 ## 7. Training & Deployment
 
-Please see the [release page for the pre-trained model](link-to-your-pretrain-release) for a detailed training template (`.yml`) and instructions.
+Please see the [release page for the pre-trained model](link-to-your-pretrain-release) (not yet released but coming soon) for a detailed training template (`.yml`) and instructions.
 
 A key feature of ParagonSR is its ability to be permanently fused for deployment. After training, run `fuse_model.py` and then `export_onnx.py` to create a final, high-speed, portable model for real-world applications.
 
