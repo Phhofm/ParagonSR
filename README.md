@@ -7,7 +7,7 @@
 
 ## 1. Introduction & Philosophy
 
-ParagonSR is a state-of-the-art, general-purpose super-resolution architecture designed for a superior balance of **peak quality, training efficiency, and inference speed**. It is the result of a rigorous design and debugging process, representing a synergistic blend of the most effective and efficient ideas from a multitude of modern SISR models.
+ParagonSR is a state-of-the-art, general-purpose super-resolution architecture designed for a superior balance of **peak quality, training efficiency, and inference speed**. It represents a synergistic blend of the most effective and efficient ideas from a multitude of modern SISR models.
 
 The core philosophy behind ParagonSR is that of an **"Optimized Hybrid CNN,"** engineered to achieve the perceptual power and deep feature understanding of a Transformer, but with the efficiency, stability, and deployment speed of a highly optimized Convolutional Neural Network.
 
@@ -37,14 +37,32 @@ The heart of the network is the `ParagonBlock`, a novel block designed to maximi
 
 3.  **Advanced Reparameterization (The "Afterburner"):** The core convolutional unit, `ReparamConvV3`, is inspired by the powerful design of SpanPP. It fuses three distinct and powerful convolutional branches with learnable weights, dramatically increasing the model's expressive power during training with a negligible impact on the final, fused inference speed.
 
-### A Battle-Hardened Design: Engineered for Stability
+## 3. A Battle-Hardened Design: Engineered for Stability
 
 Deep, reparameterizable architectures can be prone to instability during long training runs. ParagonSR was specifically engineered to solve these challenges through a process of real-world testing and refinement:
 
 -   **`LayerScale` Integration:** Each ParagonBlock includes a `LayerScale` module, a powerful stabilization technique from modern Transformer designs. It forces the model to learn in a more controlled manner, preventing the "exploding gradient" (`NaN` loss) issues that can plague deep networks.
 -   **Stateless Fusion for EMA:** The architecture uses a stateless, "on-the-fly" fusion method during training-time validations. This design is the result of rigorous testing and is **guaranteed to be compatible with EMA**, permanently fixing the state-synchronization bugs that can corrupt a model's weights over time.
 
-## 3. The ParagonSR Family: A Model for Every Need
+## 4. Training Dynamics & Recommendations
+
+ParagonSR is a **powerhouse architecture**. Its deep and non-linear blocks give it immense representational capacity, but this also means it can generate large intermediate values and is more sensitive than simpler networks. Successful training requires a deliberate and stable strategy.
+
+### Evidence of Robustness: The "PSNR Dip"
+During its initial pre-training, the model experienced a temporary dip in performance around the 96,000 iteration mark. This was not a bug, but a sign of the model navigating a complex loss landscape.
+
+-   **What Happened:** The model encountered a difficult batch of data, and the optimizer took a single, suboptimal step.
+-   **Why It's a Good Thing:** A lesser or unstable architecture might have failed catastrophically. Instead, ParagonSR's built-in stability features (`LayerScale`, `grad_clip`, and the `bf16` training format) successfully contained the instability. The model **immediately self-corrected** on subsequent batches and went on to achieve a new best performance. This dip and recovery is a testament to the architecture's resilience.
+
+### Recommendations for Fine-Tuning
+This pre-train is an excellent foundation. However, when fine-tuning with more complex and potentially unstable losses (like GAN, LPIPS, DISTS, etc.), a more conservative approach is **strongly recommended** to ensure stability:
+
+-   **Low Learning Rate:** Start with a small learning rate, such as `1e-5` to `5e-5`.
+-   **Gradient Clipping:** Keep `grad_clip: 1.0` (or a similar value) enabled. It is an essential safety net.
+-   **Use a Warm-up:** A warm-up period of `warmup_iter: 5000` is highly recommended to allow the optimizer to adapt to new loss functions.
+-   **Adjust Optimizer Betas:** For GAN training, consider using a lower momentum value, e.g., `betas: [0.8, 0.99]`, to make the optimizer more responsive.
+
+## 5. The ParagonSR Family: A Model for Every Need
 
 ParagonSR comes in a variety of sizes, allowing users to choose the perfect balance of quality and performance for their hardware and use case.
 
@@ -57,7 +75,7 @@ ParagonSR comes in a variety of sizes, allowing users to choose the perfect bala
 | `paragonsr_l` | 128 | 10 x 10 (100)| >24GB | ~12GB+ | Enthusiast/SOTA Quality |
 | `paragonsr_xl` | 160 | 12 x 12 (144)| 48GB+ | >24GB | Research/Benchmark Chasing |
 
-## 4. Installation & Setup
+## 6. Installation & Setup
 
 This project is designed for the **[traiNNer-redux](https://github.com/the-database/traiNNer-redux)** framework.
 
@@ -88,13 +106,13 @@ pip install torch torchvision safetensors onnx onnxconverter-common onnxscript
 # NOTE: For GPU support, ensure you install the correct PyTorch version for your CUDA toolkit.
 ```
 
-## 5. Training & Deployment
+## 7. Training & Deployment
 
-Please see the [release page for the pre-trained model](link-to-your-pretrain-release) for a detailed training template (`.yml`) and a guide to using the deployment scripts.
+Please see the [release page for the pre-trained model](link-to-your-pretrain-release) for a detailed training template (`.yml`) and instructions.
 
 A key feature of ParagonSR is its ability to be permanently fused for deployment. After training, run `fuse_model.py` and then `export_onnx.py` to create a final, high-speed, portable model for real-world applications.
 
-## 6. Acknowledgements & Inspirations
+## 8. Acknowledgements & Inspirations
 
 This architecture stands on the shoulders of giants and would not be possible without the incredible research and open-source contributions of the community.
 
