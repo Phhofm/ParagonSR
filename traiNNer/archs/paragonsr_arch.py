@@ -52,6 +52,8 @@ Usage:
 -   Place this file in your `traiNNer/archs/` directory.
 -   In your config.yaml, use one of the registered variants, e.g.:
     `network_g: type: paragonsr_s`
+-   The full family includes: `paragonsr_anime`, `paragonsr_nano`, `paragonsr_tiny`,
+    `paragonsr_xs`, `paragonsr_s`, `paragonsr_m`, `paragonsr_l`, `paragonsr_xl`.
 """
 
 import torch
@@ -66,8 +68,7 @@ from traiNNer.utils.registry import ARCH_REGISTRY
 class ReparamConvV2(nn.Module):
     """
     The final, stable, and powerful reparameterizable block. It fuses a 3x3,
-    a 1x1, and a 3x3 depthwise convolution. This version has the corrected
-    fusion logic.
+    a 1x1, and a 3x3 depthwise convolution.
     """
 
     def __init__(
@@ -110,23 +111,11 @@ class ReparamConvV2(nn.Module):
 
         # Fuse Depthwise 3x3 branch, if it exists
         if self.dw_conv3x3 is not None:
-            # --- CRITICAL FIX: Direct and Correct Kernel Conversion ---
-            # A depthwise kernel has shape (C_out, 1, kH, kW) where C_out = C_in.
-            # A standard kernel has shape (C_out, C_in / groups, kH, kW).
-            # To convert, we create a zero tensor of the target standard shape and
-            # place the depthwise weights along the diagonal.
-
             dw_kernel = self.dw_conv3x3.weight.clone()
             dw_bias = self.dw_conv3x3.bias.clone()
-
-            # The target shape for a standard conv with these groups
             target_shape = self.conv3x3.weight.shape
             standard_dw_kernel = torch.zeros(target_shape, device=dw_kernel.device)
-
-            # Place each depthwise filter into its correct position in the standard kernel
             for i in range(self.in_channels):
-                # in_channel_idx_in_group = i // (in_channels // groups)
-                # For depthwise, groups=in_channels, so this is just 0.
                 standard_dw_kernel[i, 0, :, :] = dw_kernel[i, 0, :, :]
 
             fused_kernel += standard_dw_kernel
@@ -180,7 +169,6 @@ class GatedFFN(nn.Module):
         hidden_dim = int(dim * expansion_ratio)
         self.project_in_g = nn.Conv2d(dim, hidden_dim, 1)
         self.project_in_i = nn.Conv2d(dim, hidden_dim, 1)
-        # Use the new, powerful, and stable ReparamConvV2
         self.spatial_mixer = ReparamConvV2(hidden_dim, hidden_dim, groups=hidden_dim)
         self.act = nn.Mish(inplace=True)
         self.project_out = nn.Conv2d(hidden_dim, dim, 1)
@@ -192,18 +180,11 @@ class GatedFFN(nn.Module):
 
 
 class LayerScale(nn.Module):
-    """
-    A learnable scaling factor applied to the output of a residual block.
-    This is a key stabilization technique for very deep networks.
-    From: "Going deeper with Image Transformers" (Touvron et al., 2021)
-    """
-
     def __init__(self, dim: int, init_values: float = 1e-5) -> None:
         super().__init__()
         self.gamma = nn.Parameter(init_values * torch.ones(dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # The permute is necessary because LayerScale is channel-wise.
         return (
             (x.permute(0, 2, 3, 1).contiguous() * self.gamma)
             .permute(0, 3, 1, 2)
@@ -212,40 +193,41 @@ class LayerScale(nn.Module):
 
 
 class ParagonBlock(nn.Module):
-    """The core block of ParagonSR, now with LayerScale for ultimate stability."""
+    """The core block of ParagonSR, with LayerScale for increased stability."""
 
-    def __init__(self, dim: int, ffn_expansion: float = 2.0) -> None:
+    def __init__(self, dim: int, ffn_expansion: float = 2.0, **block_kwargs) -> None:
         super().__init__()
         self.norm1 = nn.GroupNorm(num_groups=1, num_channels=dim)
-        self.context = InceptionDWConv2d(dim)
+        self.context = InceptionDWConv2d(dim, **block_kwargs)
         self.norm2 = nn.GroupNorm(num_groups=1, num_channels=dim)
         self.transformer = GatedFFN(dim, expansion_ratio=ffn_expansion)
-
-        # STABILITY UPGRADE: Add a learnable LayerScale to the output of each branch.
         self.ls1 = LayerScale(dim)
         self.ls2 = LayerScale(dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # The forward pass now scales the output of each residual branch.
-        # This forces the model to learn in a more controlled and stable manner.
         residual = x
         x_normed = self.norm1(x)
         x = self.context(x_normed)
-        x = residual + self.ls1(x)  # Apply scaling here
+        x = residual + self.ls1(x)
 
         residual = x
         x_normed = self.norm2(x)
         x = self.transformer(x_normed)
-        x = residual + self.ls2(x)  # And apply scaling here
+        x = residual + self.ls2(x)
 
         return x
 
 
 class ResidualGroup(nn.Module):
-    def __init__(self, dim: int, num_blocks: int, ffn_expansion: float = 2.0) -> None:
+    def __init__(
+        self, dim: int, num_blocks: int, ffn_expansion: float = 2.0, **block_kwargs
+    ) -> None:
         super().__init__()
         self.blocks = nn.Sequential(
-            *[ParagonBlock(dim, ffn_expansion) for _ in range(num_blocks)]
+            *[
+                ParagonBlock(dim, ffn_expansion, **block_kwargs)
+                for _ in range(num_blocks)
+            ]
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -261,13 +243,16 @@ class ParagonSR(nn.Module):
         num_groups: int = 6,
         num_blocks: int = 6,
         ffn_expansion: float = 2.0,
+        block_kwargs: dict | None = None,
     ) -> None:
         super().__init__()
+        if block_kwargs is None:
+            block_kwargs = {}
         self.scale = scale
         self.conv_in = nn.Conv2d(in_chans, num_feat, 3, 1, 1)
         self.body = nn.Sequential(
             *[
-                ResidualGroup(num_feat, num_blocks, ffn_expansion)
+                ResidualGroup(num_feat, num_blocks, ffn_expansion, **block_kwargs)
                 for _ in range(num_groups)
             ]
         )
@@ -312,14 +297,39 @@ class ParagonSR(nn.Module):
 
 
 @ARCH_REGISTRY.register()
+def paragonsr_anime(scale: int = 4, **kwargs) -> ParagonSR:
+    """
+    ParagonSR-Anime: A specialized, ultra-fast variant optimized for the
+    clean lines and flat colors typical of anime and cartoons. It prioritizes
+    line reconstruction and artifact removal for real-time video upscaling.
+    - Inference Target: Real-time 1080p -> 4K on mainstream GPUs.
+    """
+    return ParagonSR(
+        scale=scale, num_feat=28, num_groups=2, num_blocks=3, ffn_expansion=1.5
+    )
+
+
+@ARCH_REGISTRY.register()
+def paragonsr_nano(scale: int = 4, **kwargs) -> ParagonSR:
+    """
+    ParagonSR-Nano: An extremely lightweight model for maximum compatibility
+    and real-time performance on low-end hardware or CPU.
+    - Inference Target: Any GPU with ~2-4GB VRAM, suitable for 720p->1440p video.
+    """
+    return ParagonSR(
+        scale=scale, num_feat=24, num_groups=3, num_blocks=2, ffn_expansion=1.5
+    )
+
+
+@ARCH_REGISTRY.register()
 def paragonsr_tiny(scale: int = 4, **kwargs) -> ParagonSR:
     """
-    ParagonSR-Tiny: Ultra-lightweight for high-speed/real-time use cases.
+    ParagonSR-Tiny: Ultra-lightweight for high-speed use cases.
     - Training Target: ~4-6GB VRAM GPUs (e.g., GTX 1650).
     - Inference Target: Any modern GPU/CPU; suitable for video.
     """
     return ParagonSR(
-        scale=scale, num_feat=32, num_groups=3, num_blocks=3, ffn_expansion=2.0
+        scale=scale, num_feat=32, num_groups=3, num_blocks=2, ffn_expansion=2.0
     )
 
 
