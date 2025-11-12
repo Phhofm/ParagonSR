@@ -8,7 +8,7 @@ This script loads a trained ParagonSR checkpoint (in .safetensors format),
 applies the permanent fusion logic, and saves the new, simplified state_dict
 back into the .safetensors format for consistency.
 
-Run with python -m scripts.fuse_model
+Run with python -m scripts.paragonsr.fuse_model
 """
 
 import torch
