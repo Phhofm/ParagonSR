@@ -295,20 +295,6 @@ class ParagonSR(nn.Module):
 
 # --- Factory Registration for traiNNer-redux: The Complete Family ---
 
-
-@ARCH_REGISTRY.register()
-def paragonsr_anime(scale: int = 4, **kwargs) -> ParagonSR:
-    """
-    ParagonSR-Anime: A specialized, ultra-fast variant optimized for the
-    clean lines and flat colors typical of anime and cartoons. It prioritizes
-    line reconstruction and artifact removal for real-time video upscaling.
-    - Inference Target: Real-time 1080p -> 4K on mainstream GPUs.
-    """
-    return ParagonSR(
-        scale=scale, num_feat=28, num_groups=2, num_blocks=3, ffn_expansion=1.5
-    )
-
-
 @ARCH_REGISTRY.register()
 def paragonsr_nano(scale: int = 4, **kwargs) -> ParagonSR:
     """
